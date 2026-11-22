@@ -1,0 +1,9 @@
+# Optional packages for the TensorRT engine (installed by prepare.py, NOT by requirements.txt).
+# prepare.py installs them with requirements.txt as a constraints file.
+tensorrt-cu12==10.16.1.11
+tensorrt-cu12-bindings==10.16.1.11
+tensorrt-cu12-libs==10.16.1.11
+onnx==1.23.2
+onnxslim==0.1.99
+onnxruntime-gpu==1.26.0
+flatbuffers==25.12.19
