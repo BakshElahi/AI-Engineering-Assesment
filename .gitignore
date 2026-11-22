@@ -4,5 +4,7 @@ __pycache__/
 results.jsonl
 *.tmp
 yolo11l.pt
+yolo11l.engine
+yolo11l.onnx
 finevideo/
 .venv/
