@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.parts/
+results.jsonl
+*.tmp
+yolo11l.pt
+finevideo/
+.venv/
