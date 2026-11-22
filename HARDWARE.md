@@ -20,7 +20,7 @@ other, not at the same time.
 
 | Notebook | Files | Wall time of `run.py` (log line `TOTAL wall time`) |
 |---|---|---|
-| A | train-00000 .. train-00024 | **FILL IN from notebook A log** s |
+| A | train-00000 .. train-00024 | 10357.1 s (2 h 52 min) |
 | B | train-00025 .. train-00049 | 10143 s (2 h 49 min) |
 
 Total: **FILL IN (A + B)**. These times exclude about 1.5 minutes per notebook for installing packages and
