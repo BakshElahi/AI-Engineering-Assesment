@@ -4,6 +4,15 @@ import numpy as np
 CLASSES = [0, 2, 16, 63, 67]
 NAMES = {0: "person", 2: "car", 16: "dog", 63: "laptop", 67: "cell phone"}
 MIN_SAMPLES_PER_SEC = 8
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def find_file(name):
+    for d in (os.getcwd(), HERE):
+        p = os.path.join(d, name)
+        if os.path.exists(p):
+            return p
+    return None
 
 
 def get_rotation(stream, cv2):
@@ -28,7 +37,7 @@ def video_iter(path, max_videos):
         yield f"{name}:?", e
 
 
-def process_file(path, model, kw, a, out_path):
+def process_file(path, predict, a, out_path):
     import av, cv2
     it, lock, q = video_iter(path, a.max_videos), threading.Lock(), queue.Queue(maxsize=8)
 
@@ -100,7 +109,7 @@ def process_file(path, model, kw, a, out_path):
                     continue
                 t = time.perf_counter()
                 try:
-                    res = model.predict(frames, **kw)
+                    res = predict(frames)
                     st = states.setdefault(vid, {})
                     for sec, r in zip(secs, res):
                         cls = r.boxes.cls.int().tolist()
@@ -139,9 +148,33 @@ def gpu_worker(dev, fq, a, parts_dir):
     from ultralytics import YOLO
     logging.getLogger("ultralytics").setLevel(logging.ERROR)
     cv2.setNumThreads(1); torch.set_num_threads(2)
-    model = YOLO(a.weights)
     kw = dict(imgsz=640, conf=0.4, iou=0.7, classes=CLASSES, device=dev, half=not a.fp32, verbose=False)
-    model.predict([np.zeros((360, 640, 3), np.uint8)] * 4, **kw)  # warm-up
+    warm = [np.zeros((360, 640, 3), np.uint8)] * 4
+    is_engine = a.weights.endswith(".engine")
+    try:
+        model = YOLO(a.weights, task="detect")
+        model.predict(warm, **kw)  # warm-up
+    except Exception as e:
+        if not is_engine:
+            raise
+        print(f"[gpu{dev}] TensorRT engine failed ({type(e).__name__}: {str(e)[:150]}); falling back to PyTorch", flush=True)
+        is_engine = False
+        model = YOLO(a.pt_weights, task="detect")
+        model.predict(warm, **kw)
+    fb = {"model": None}
+
+    def predict(frames):
+        try:
+            return model.predict(frames, **kw)
+        except Exception:
+            if not is_engine:
+                raise
+            # engine failed on this chunk: retry with the PyTorch model instead of losing the video
+            if fb["model"] is None:
+                fb["model"] = YOLO(a.pt_weights, task="detect")
+            return fb["model"].predict(frames, **kw)
+
+    print(f"[gpu{dev}] backend={'tensorrt' if is_engine else 'pytorch'}", flush=True)
     while True:
         path = fq.get()
         if path is None:
@@ -150,7 +183,7 @@ def gpu_worker(dev, fq, a, parts_dir):
         if os.path.exists(out):
             continue  # resume
         t0 = time.time()
-        n, tw, ti = process_file(path, model, kw, a, out)
+        n, tw, ti = process_file(path, predict, a, out)
         dt = max(1e-9, time.time() - t0)
         print(f"[gpu{dev}] {os.path.basename(path)} sampled_frames={n} total={dt:.0f}s "
               f"infer={ti:.0f}s wait_decode={tw:.0f}s -> {n/dt:.1f} sampled fps", flush=True)
@@ -161,7 +194,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
     ap.add_argument("--output", required=True)
-    ap.add_argument("--weights", default="yolo11l.pt")
+    ap.add_argument("--weights", default=None, help="default: yolo11l.engine if present, else yolo11l.pt")
+    ap.add_argument("--no-trt", action="store_true", help="ignore yolo11l.engine and use PyTorch")
     ap.add_argument("--stride", type=int, default=3)
     ap.add_argument("--chunk", type=int, default=32)
     ap.add_argument("--workers", type=int, default=1, help="decoder threads per process")
@@ -171,12 +205,16 @@ def main():
     ap.add_argument("--keep-parts", action="store_true")
     a = ap.parse_args()
 
+    a.pt_weights = find_file("yolo11l.pt") or "yolo11l.pt"
+    if a.weights is None:
+        eng = None if a.no_trt else find_file("yolo11l.engine")
+        a.weights = eng or a.pt_weights
     ngpu = torch.cuda.device_count()
     a.procs = a.procs or max(1, ngpu)
     files = sorted(glob.glob(os.path.join(a.input, "*.parquet")))
     parts_dir = a.output + ".parts"
     os.makedirs(parts_dir, exist_ok=True)
-    print(f"files={len(files)} gpus={ngpu} procs={a.procs} stride={a.stride} fp16={not a.fp32}", flush=True)
+    print(f"files={len(files)} gpus={ngpu} procs={a.procs} stride={a.stride} fp16={not a.fp32} weights={a.weights}", flush=True)
 
     ctx = mp.get_context("spawn")
     fq = ctx.Queue()
