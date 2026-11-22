@@ -89,10 +89,7 @@ These numbers compare against my own FP32 every-frame run, not the official refe
 
 ## How `results.jsonl.gz` was made
 
-On Kaggle (2 x Tesla T4, see `HARDWARE.md`) with the default settings (`--stride 3`, FP16), in two notebooks:
-files 0 to 24 and files 25 to 49, then concatenated. It has 1,650 videos, 461,757 seconds and no error lines.
-That environment used Python 3.13 and PyTorch 2.11.0+cu130, while `requirements.txt` pins PyTorch 2.6.0 (CUDA 12.4 wheels)
-because the grading machine only guarantees a CUDA 12 driver. I did not rerun the full set with the pinned PyTorch version.
+That environment used Python 3.13, PyTorch 2.11.0+cu130, PyAV 19.0.2 and OpenCV 4.14. requirements.txt pins versions that work on Python 3.11 with a CUDA 12 driver (PyTorch 2.6.0 with CUDA 12.4 wheels, PyAV 18.1.1, OpenCV 5.1.0.95). I installed this set in a fresh Python 3.11 environment on a Kaggle T4 and reran 3 videos from the first file: 1,080 of 1,082 seconds (99.8%) were identical to results.jsonl.gz. I did not rerun the full set with the pinned versions, and I could not test on a CUDA 12-only driver.
 
 ## Known limitations
 
